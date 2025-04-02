@@ -44,7 +44,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
 
     private int minimumNumberShouldMatch;
     private final List<BooleanClause> clauses = new ArrayList<>();
-
+    private List<Integer> clusterIds;
     /** Sole constructor. */
     public Builder() {}
 
@@ -62,6 +62,11 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
      */
     public Builder setMinimumNumberShouldMatch(int min) {
       this.minimumNumberShouldMatch = min;
+      return this;
+    }
+
+    public Builder setClusterIds(List<Integer> clusterIds) {
+      this.clusterIds = clusterIds;
       return this;
     }
 
@@ -118,7 +123,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
      * Create a new {@link BooleanQuery} based on the parameters that have been set on this builder.
      */
     public BooleanQuery build() {
-      return new BooleanQuery(minimumNumberShouldMatch, clauses.toArray(new BooleanClause[0]));
+      return new BooleanQuery(minimumNumberShouldMatch, clauses.toArray(new BooleanClause[0]), clusterIds);
     }
   }
 
@@ -126,7 +131,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   private final List<BooleanClause> clauses; // used for toString() and getClauses()
   // WARNING: Do not let clauseSets escape from this class as it breaks immutability:
   private final Map<Occur, Collection<Query>> clauseSets; // used for equals/hashCode
-
+  private List<Integer> clusterIds;
   private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses) {
     this.minimumNumberShouldMatch = minimumNumberShouldMatch;
     this.clauses = Collections.unmodifiableList(Arrays.asList(clauses));
@@ -140,6 +145,11 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     for (BooleanClause clause : clauses) {
       clauseSets.get(clause.occur()).add(clause.query());
     }
+  }
+
+  private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses, List<Integer> clusterIds) {
+    this(minimumNumberShouldMatch, clauses);
+    this.clusterIds = clusterIds;
   }
 
   /** Gets the minimum number of the optional BooleanClauses which must be satisfied. */
@@ -157,6 +167,10 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     // turn this immutable here, because we need to preserve the correct collection types for
     // equals/hashCode!
     return Collections.unmodifiableCollection(clauseSets.get(occur));
+  }
+
+  public Collection<Integer> getClusterIds() {
+    return this.clusterIds;
   }
 
   /**

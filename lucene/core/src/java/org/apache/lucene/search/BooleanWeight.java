@@ -22,6 +22,9 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.lucene.index.DocValuesSkipper;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.similarities.Similarity;
@@ -278,7 +281,6 @@ final class BooleanWeight extends Weight {
   @Override
   public ScorerSupplier scorerSupplier(LeafReaderContext context) throws IOException {
     int minShouldMatch = query.getMinimumNumberShouldMatch();
-
     final Map<Occur, Collection<ScorerSupplier>> scorers = new EnumMap<>(Occur.class);
     for (Occur occur : Occur.values()) {
       scorers.put(occur, new ArrayList<>());
@@ -324,8 +326,7 @@ final class BooleanWeight extends Weight {
       // Purely optional clauses are useless without scoring.
       scorers.get(Occur.SHOULD).clear();
     }
-
     return new BooleanScorerSupplier(
-        this, scorers, scoreMode, minShouldMatch, context.reader().maxDoc());
+        this, scorers, scoreMode, minShouldMatch, context.reader().maxDoc(), context);
   }
 }

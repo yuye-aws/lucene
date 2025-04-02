@@ -205,7 +205,7 @@ public final class Version {
    * <b>re-test your entire application</b> to ensure it behaves as expected, as some defaults may
    * have changed and may break functionality in your application.
    */
-  public static final Version LATEST = LUCENE_10_1_1;
+  public static final Version LATEST = LUCENE_10_1_0;
 
   /**
    * Constant for backwards compatibility.
