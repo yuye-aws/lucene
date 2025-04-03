@@ -3,15 +3,15 @@ package org.apache.lucene.search;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.util.CollectionUtil;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * This is a group iterator that groups documents by the value of a field. It is used to group
@@ -21,8 +21,8 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     private final LeafReaderContext context;
     private DocBound current;
     private final static String SORTED_FIELD = "cluster_id";
-    private Map<Long, DocBound> clusterBound = new TreeMap<>();
-    private Iterator<Map.Entry<Long, DocBound>> clusterBoundIter;
+    private Map<Long, DocBound> clusterBound = new HashMap<>();
+    private Iterator<DocBound> clusterBoundIter;
 
     public DocBound getCurrent() {
         return current;
@@ -31,13 +31,14 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     private void initialize(Collection<Integer> groupValues) throws IOException {
 
         for (Integer groupValue : groupValues) {
-            clusterBound.put(Long.valueOf(groupValue), new DocBound(-1, -1));
+            clusterBound.put((long)groupValue, new DocBound(-1, -1));
         }
 
         SortedNumericDocValues docValues = DocValues.getSortedNumeric(this.context.reader(), SORTED_FIELD);
         int doc = docValues.nextDoc();
         while (doc != DocIdSetIterator.NO_MORE_DOCS) {
             long value = docValues.nextValue();
+            docValues.advance()
             if (clusterBound.containsKey(value)) {
                 if (clusterBound.get(value).lower == -1) {
                     clusterBound.get(value).lower = doc;
@@ -46,7 +47,10 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
             }
             doc = docValues.nextDoc();
         }
-        clusterBoundIter = clusterBound.entrySet().iterator();
+        // get values from clusterBound and sort them by lower then assign to bounds
+        List<DocBound> bounds = new ArrayList<>(clusterBound.values().stream().toList());
+        bounds.sort((a, b) -> a.lower - b.lower);
+        clusterBoundIter = bounds.iterator();
     }
 
     GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues) throws IOException {
@@ -67,7 +71,7 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
             current = null;
             return null;
         }
-        current = clusterBoundIter.next().getValue();
+        current = clusterBoundIter.next();
         return current;
     }
 
