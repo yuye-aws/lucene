@@ -94,8 +94,12 @@ final class MaxScoreBulkScorer extends BulkScorer {
   @Override
   public int score(LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
     collector.setScorer(scorable);
-    GroupedDisi groupedDisi = new GroupedDisi(this.leafReaderContext, this.clusterIds);
-    groupedDisi.next();
+    GroupedDisi groupedDisi = null;
+    if (this.clusterIds != null) {
+      groupedDisi = new GroupedDisi(this.leafReaderContext, this.clusterIds);
+      groupedDisi.next();
+    }
+
     // This scorer computes outer windows based on impacts that are stored in the index. These outer
     // windows should be small enough to provide good upper bounds of scores, and big enough to make
     // sure we spend more time collecting docs than recomputing windows.
@@ -140,14 +144,17 @@ final class MaxScoreBulkScorer extends BulkScorer {
         top = essentialQueue.updateTop();
       }
 
-      while (groupedDisi.getCurrent() != null && top.doc >= groupedDisi.getCurrent().upper) {
+      if (groupedDisi != null) {
+        while (groupedDisi.getCurrent() != null && top.doc >= groupedDisi.getCurrent().upper) {
           groupedDisi.next();
+        }
+
+        while (groupedDisi.getCurrent() != null && top.doc < groupedDisi.getCurrent().lower) {
+          top.doc = top.iterator.advance( groupedDisi.getCurrent().lower);
+          top = essentialQueue.updateTop();
+        }
       }
 
-      while (groupedDisi.getCurrent() != null && top.doc < groupedDisi.getCurrent().lower) {
-        top.doc = top.iterator.advance( groupedDisi.getCurrent().lower);
-        top = essentialQueue.updateTop();
-      }
 
 
       while (top.doc < outerWindowMax) {
@@ -169,7 +176,7 @@ final class MaxScoreBulkScorer extends BulkScorer {
 
   private void scoreInnerWindow(
       LeafCollector collector, Bits acceptDocs, int max, DisiWrapper filter, GroupedDisi groupedDisi) throws IOException {
-    if (groupedDisi.getCurrent() != null) {
+    if (groupedDisi != null && groupedDisi.getCurrent() != null) {
       scoreInnerWindowWithSkipper(collector, acceptDocs, max, groupedDisi);
     } else if (filter != null) {
       scoreInnerWindowWithFilter(collector, acceptDocs, max, filter);

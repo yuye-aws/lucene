@@ -1,135 +1,74 @@
 package org.apache.lucene.search;
 
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.util.CollectionUtil;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * This is a group iterator that groups documents by the value of a field. It is used to group
  * documents by cluster_id.
  */
 public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
-
-    private final Collection<Integer> groupValues;
     private final LeafReaderContext context;
-    private Iterator<Integer> groupIterator;
     private DocBound current;
+    private final static String SORTED_FIELD = "cluster_id";
+    private Map<Long, DocBound> clusterBound = new TreeMap<>();
+    private Iterator<Map.Entry<Long, DocBound>> clusterBoundIter;
 
     public DocBound getCurrent() {
         return current;
     }
 
-    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues) {
-        this.context = context;
-        this.groupValues = groupValues;
-        this.groupIterator = this.groupValues.iterator();
+    private void initialize(Collection<Integer> groupValues) throws IOException {
+
+        for (Integer groupValue : groupValues) {
+            clusterBound.put(Long.valueOf(groupValue), new DocBound(-1, -1));
+        }
+
+        SortedNumericDocValues docValues = DocValues.getSortedNumeric(this.context.reader(), SORTED_FIELD);
+        int doc = docValues.nextDoc();
+        while (doc != DocIdSetIterator.NO_MORE_DOCS) {
+            long value = docValues.nextValue();
+            if (clusterBound.containsKey(value)) {
+                if (clusterBound.get(value).lower == -1) {
+                    clusterBound.get(value).lower = doc;
+                }
+                clusterBound.get(value).upper = doc + 1;
+            }
+            doc = docValues.nextDoc();
+        }
+        clusterBoundIter = clusterBound.entrySet().iterator();
     }
 
-    private DocBound nextGroup() throws IOException {
-        if (!groupIterator.hasNext()) return null;
-        int groupValue = groupIterator.next();
-
-        Sort indexSort = this.context.reader().getMetaData().sort();
-        if (indexSort != null
-            && indexSort.getSort().length > 0
-            && indexSort.getSort()[0].getField().equals("cluster_id")) {
-            final SortField sortField = indexSort.getSort()[0];
-            final SortField.Type sortFieldType = getSortFieldType(sortField);
-
-            int maxDoc = this.context.reader().maxDoc();
-            int lower = groupValue;
-            int upper = groupValue;
-            // Perform a binary search to find the first document with value >= lower.
-            ValueComparator comparator = loadComparator(sortField, sortFieldType, lower, this.context);
-            int low = 0;
-            int high = maxDoc - 1;
-
-            while (low <= high) {
-                int mid = (low + high) >>> 1;
-                if (comparator.compare(mid) <= 0) {
-                    high = mid - 1;
-                    comparator = loadComparator(sortField, sortFieldType, lower, this.context);
-                } else {
-                    low = mid + 1;
-                }
-            }
-            int firstDocIdInclusive = high + 1;
-
-            // Perform a binary search to find the first document with value > upper.
-            // Since we know that upper >= lower, we can initialize the lower bound
-            // of the binary search to the result of the previous search.
-            comparator = loadComparator(sortField, sortFieldType, upper, this.context);
-            low = firstDocIdInclusive;
-            high = maxDoc - 1;
-
-            while (low <= high) {
-                int mid = (low + high) >>> 1;
-                if (comparator.compare(mid) < 0) {
-                    high = mid - 1;
-                    comparator = loadComparator(sortField, sortFieldType, upper, this.context);
-                } else {
-                    low = mid + 1;
-                }
-            }
-
-            int lastDocIdExclusive = high + 1;
-            if (firstDocIdInclusive >= lastDocIdExclusive) {
-                return nextGroup();
-            }
-            return new DocBound(firstDocIdInclusive, lastDocIdExclusive);
-        }
-        return null;
+    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues) throws IOException {
+        this.context = context;
+        initialize(groupValues);
     }
 
     @Override
     public boolean hasNext() {
-        return groupIterator.hasNext();
+        return clusterBoundIter.hasNext();
     }
 
     @Override
     public DocBound next() {
-        try {
-            current = nextGroup();
-            return current;
-        } catch (IOException e) {
+        if (!clusterBoundIter.hasNext()) {
+            // Handle the case when there are no more elements
+            // For example, return null or a default value
+            current = null;
             return null;
         }
-    }
-
-    private static SortField.Type getSortFieldType(SortField sortField) {
-        // We expect the sortField to be SortedNumericSortField
-        if (sortField instanceof SortedNumericSortField) {
-            return ((SortedNumericSortField) sortField).getNumericType();
-        } else {
-            return sortField.getType();
-        }
-    }
-    private interface ValueComparator {
-        int compare(int docID) throws IOException;
-    }
-
-    private static ValueComparator loadComparator(
-        SortField sortField, SortField.Type type, long topValue, LeafReaderContext context)
-        throws IOException {
-        @SuppressWarnings("unchecked")
-        FieldComparator<Number> fieldComparator =
-            (FieldComparator<Number>) sortField.getComparator(1, Pruning.NONE);
-        if (type == SortField.Type.INT) {
-            fieldComparator.setTopValue((int) topValue);
-        } else {
-            // Since we support only Type.INT and Type.LONG, assuming LONG for all other cases
-            fieldComparator.setTopValue(topValue);
-        }
-
-        LeafFieldComparator leafFieldComparator = fieldComparator.getLeafComparator(context);
-        int direction = sortField.getReverse() ? -1 : 1;
-
-        return doc -> {
-            int value = leafFieldComparator.compareTop(doc);
-            return direction * value;
-        };
+        current = clusterBoundIter.next().getValue();
+        return current;
     }
 
     /**
