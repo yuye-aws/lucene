@@ -18,7 +18,16 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.DocValuesSkipper;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.MathUtil;
@@ -47,11 +56,14 @@ final class MaxScoreBulkScorer extends BulkScorer {
   private final Score scorable = new Score();
   final double[] maxScoreSums;
   private final DisiWrapper filter;
+  private DocValuesSkipper skipper;
+  private LeafReaderContext leafReaderContext;
+  private Collection<Integer> clusterIds;
 
   private final long[] windowMatches = new long[FixedBitSet.bits2words(INNER_WINDOW_SIZE)];
   private final double[] windowScores = new double[INNER_WINDOW_SIZE];
 
-  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter) throws IOException {
+  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter, LeafReaderContext leafReaderContext, Collection<Integer> clusterIds) throws IOException {
     this.maxDoc = maxDoc;
     this.filter = filter == null ? null : new DisiWrapper(filter, false);
     allScorers = new DisiWrapper[scorers.size()];
@@ -66,6 +78,8 @@ final class MaxScoreBulkScorer extends BulkScorer {
     this.cost = cost;
     essentialQueue = new DisiPriorityQueue(allScorers.length);
     maxScoreSums = new double[allScorers.length];
+    this.leafReaderContext = leafReaderContext;
+    this.clusterIds = clusterIds;
   }
 
   // Number of outer windows that have been evaluated
@@ -80,6 +94,11 @@ final class MaxScoreBulkScorer extends BulkScorer {
   @Override
   public int score(LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
     collector.setScorer(scorable);
+    GroupedDisi groupedDisi = null;
+    if (this.clusterIds != null) {
+      groupedDisi = new GroupedDisi(this.leafReaderContext, this.clusterIds);
+      groupedDisi.next();
+    }
 
     // This scorer computes outer windows based on impacts that are stored in the index. These outer
     // windows should be small enough to provide good upper bounds of scores, and big enough to make
@@ -119,13 +138,27 @@ final class MaxScoreBulkScorer extends BulkScorer {
       }
 
       DisiWrapper top = essentialQueue.top();
+
       while (top.doc < outerWindowMin) {
         top.doc = top.iterator.advance(outerWindowMin);
         top = essentialQueue.updateTop();
       }
 
+      if (groupedDisi != null) {
+        while (groupedDisi.getCurrent() != null && top.doc >= groupedDisi.getCurrent().upper) {
+          groupedDisi.next();
+        }
+
+        while (groupedDisi.getCurrent() != null && top.doc < groupedDisi.getCurrent().lower) {
+          top.doc = top.iterator.advance( groupedDisi.getCurrent().lower);
+          top = essentialQueue.updateTop();
+        }
+      }
+
+
+
       while (top.doc < outerWindowMax) {
-        scoreInnerWindow(collector, acceptDocs, outerWindowMax, filter);
+        scoreInnerWindow(collector, acceptDocs, outerWindowMax, filter, groupedDisi);
         top = essentialQueue.top();
         if (minCompetitiveScore >= nextMinCompetitiveScore) {
           // The minimum competitive score increased substantially, so we can now partition scorers
@@ -142,8 +175,10 @@ final class MaxScoreBulkScorer extends BulkScorer {
   }
 
   private void scoreInnerWindow(
-      LeafCollector collector, Bits acceptDocs, int max, DisiWrapper filter) throws IOException {
-    if (filter != null) {
+      LeafCollector collector, Bits acceptDocs, int max, DisiWrapper filter, GroupedDisi groupedDisi) throws IOException {
+    if (groupedDisi != null && groupedDisi.getCurrent() != null) {
+      scoreInnerWindowWithSkipper(collector, acceptDocs, max, groupedDisi);
+    } else if (filter != null) {
       scoreInnerWindowWithFilter(collector, acceptDocs, max, filter);
     } else if (allScorers.length - firstRequiredScorer >= 2) {
       scoreInnerWindowAsConjunction(collector, acceptDocs, max);
@@ -158,6 +193,47 @@ final class MaxScoreBulkScorer extends BulkScorer {
         scoreInnerWindowSingleEssentialClause(collector, acceptDocs, Math.min(max, top2.doc));
       } else {
         scoreInnerWindowMultipleEssentialClauses(collector, acceptDocs, max);
+      }
+    }
+  }
+
+  private void scoreInnerWindowWithSkipper(
+      LeafCollector collector, Bits acceptDocs, int max, GroupedDisi groupedDisi) throws IOException {
+
+    DisiWrapper top = essentialQueue.top();
+
+    assert top.doc < max;
+
+    // Only score an inner window, after that we'll check if the min competitive score has increased
+    // enough for a more favorable partitioning to be used.
+    int innerWindowMin = top.doc;
+    int innerWindowMax = (int) Math.min(max, (long) innerWindowMin + INNER_WINDOW_SIZE);
+
+    while (top.doc < innerWindowMax) {
+      while (groupedDisi.getCurrent() != null && top.doc >= groupedDisi.getCurrent().upper) {
+        groupedDisi.next();
+      }
+
+      if ( groupedDisi.getCurrent() != null && top.doc < groupedDisi.getCurrent().lower) {
+        do {
+          top.doc = top.iterator.advance(groupedDisi.getCurrent().lower);
+          top = essentialQueue.updateTop();
+        } while (top.doc < groupedDisi.getCurrent().lower);
+      } else {
+        int doc = top.doc;
+        boolean match = (acceptDocs == null || acceptDocs.get(doc));
+        double score = 0;
+        do {
+          if (match) {
+            score += top.scorer.score();
+          }
+          top.doc = top.iterator.nextDoc();
+          top = essentialQueue.updateTop();
+        } while (top.doc == doc);
+
+        if (match) {
+          scoreNonEssentialClauses(collector, doc, score, firstEssentialScorer);
+        }
       }
     }
   }

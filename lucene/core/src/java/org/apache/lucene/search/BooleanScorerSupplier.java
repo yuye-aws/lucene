@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.stream.Stream;
+
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Weight.DefaultBulkScorer;
 import org.apache.lucene.util.Bits;
@@ -37,13 +39,16 @@ final class BooleanScorerSupplier extends ScorerSupplier {
   private final int maxDoc;
   private long cost = -1;
   private boolean topLevelScoringClause;
+  private LeafReaderContext leafReaderContext;
+  private Collection<Integer> clusterIds;
 
   BooleanScorerSupplier(
       Weight weight,
       Map<Occur, Collection<ScorerSupplier>> subs,
       ScoreMode scoreMode,
       int minShouldMatch,
-      int maxDoc) {
+      int maxDoc,
+      LeafReaderContext leafReaderContext) {
     if (minShouldMatch < 0) {
       throw new IllegalArgumentException(
           "minShouldMatch must be positive, but got: " + minShouldMatch);
@@ -67,6 +72,14 @@ final class BooleanScorerSupplier extends ScorerSupplier {
     this.scoreMode = scoreMode;
     this.minShouldMatch = minShouldMatch;
     this.maxDoc = maxDoc;
+    this.leafReaderContext = leafReaderContext;
+    if (weight instanceof BooleanWeight) {
+      BooleanWeight booleanWeight = (BooleanWeight) weight;
+      BooleanQuery query = (BooleanQuery) booleanWeight.getQuery();
+      this.clusterIds = query.getClusterIds();
+    } else {
+      this.clusterIds = Collections.emptyList();
+    }
   }
 
   private long computeCost() {
@@ -289,7 +302,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
         optionalScorers.add(ss.get(Long.MAX_VALUE));
       }
 
-      return new MaxScoreBulkScorer(maxDoc, optionalScorers, null);
+      return new MaxScoreBulkScorer(maxDoc, optionalScorers, null, this.leafReaderContext, this.clusterIds);
     }
 
     List<Scorer> optional = new ArrayList<Scorer>();
@@ -323,7 +336,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
     } else {
       filterScorer = new ConjunctionScorer(filters, Collections.emptySet());
     }
-    return new MaxScoreBulkScorer(maxDoc, optionalScorers, filterScorer);
+    return new MaxScoreBulkScorer(maxDoc, optionalScorers, filterScorer, this.leafReaderContext, this.clusterIds);
   }
 
   // Return a BulkScorer for the required clauses only
