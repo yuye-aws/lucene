@@ -157,7 +157,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses, List<Integer> clusterIds, Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed) {
     this(minimumNumberShouldMatch, clauses);
     this.clusterIds = clusterIds;
-    this.clusterBoundPrecomputed = getClusterBoundPrecomputed();
+    this.clusterBoundPrecomputed = clusterBoundPrecomputed;
   }
 
   /** Gets the minimum number of the optional BooleanClauses which must be satisfied. */

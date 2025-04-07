@@ -1,14 +1,15 @@
 package org.apache.lucene.search;
 
 import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.FilterCodecReader;
+import org.apache.lucene.index.FilterLeafReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.util.CollectionUtil;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
@@ -20,6 +21,7 @@ import java.util.TreeMap;
 public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     private final LeafReaderContext context;
     private DocBound current;
+    String segmentName;
     private final static String SORTED_FIELD = "cluster_id";
     private Map<Long, DocBound> clusterBound = new TreeMap<>();
     private Map<Long, DocBound> clusterBoundPrecomputed = new TreeMap<>();;
@@ -49,9 +51,24 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
         clusterBoundIter = clusterBound.entrySet().iterator();
     }
 
+    public static SegmentReader segmentReader(LeafReader reader) {
+        if (reader instanceof SegmentReader) {
+            return (SegmentReader) reader;
+        } else if (reader instanceof FilterLeafReader) {
+            final FilterLeafReader fReader = (FilterLeafReader) reader;
+            return segmentReader(FilterLeafReader.unwrap(fReader));
+        } else if (reader instanceof FilterCodecReader) {
+            final FilterCodecReader fReader = (FilterCodecReader) reader;
+            return segmentReader(FilterCodecReader.unwrap(fReader));
+        }
+        // hard fail - we can't get a SegmentReader
+        throw new IllegalStateException("Can not extract segment reader from given index reader [" + reader + "]");
+    }
+
     GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues) throws IOException {
         this.context = context;
         initialize(groupValues);
+        this.segmentName = segmentReader(context.reader()).getSegmentName();
     }
 
     GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues, Map<Long, DocBound> clusterBoundPrecomputed) throws IOException {
