@@ -32,6 +32,8 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Weight.DefaultBulkScorer;
 import org.apache.lucene.util.Bits;
 
+import javax.swing.*;
+
 final class BooleanScorerSupplier extends ScorerSupplier {
   private final Map<BooleanClause.Occur, Collection<ScorerSupplier>> subs;
   private final ScoreMode scoreMode;
@@ -41,6 +43,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
   private boolean topLevelScoringClause;
   private LeafReaderContext leafReaderContext;
   private Collection<Integer> clusterIds;
+  private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
 
   BooleanScorerSupplier(
       Weight weight,
@@ -77,8 +80,10 @@ final class BooleanScorerSupplier extends ScorerSupplier {
       BooleanWeight booleanWeight = (BooleanWeight) weight;
       BooleanQuery query = (BooleanQuery) booleanWeight.getQuery();
       this.clusterIds = query.getClusterIds();
+      this.clusterBoundPrecomputed = query.getClusterBoundPrecomputed();
     } else {
       this.clusterIds = Collections.emptyList();
+      this.clusterBoundPrecomputed = Collections.emptyMap();
     }
   }
 
@@ -302,7 +307,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
         optionalScorers.add(ss.get(Long.MAX_VALUE));
       }
 
-      return new MaxScoreBulkScorer(maxDoc, optionalScorers, null, this.leafReaderContext, this.clusterIds);
+      return new MaxScoreBulkScorer(maxDoc, optionalScorers, null, this.leafReaderContext, this.clusterIds, this.clusterBoundPrecomputed);
     }
 
     List<Scorer> optional = new ArrayList<Scorer>();
@@ -336,7 +341,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
     } else {
       filterScorer = new ConjunctionScorer(filters, Collections.emptySet());
     }
-    return new MaxScoreBulkScorer(maxDoc, optionalScorers, filterScorer, this.leafReaderContext, this.clusterIds);
+    return new MaxScoreBulkScorer(maxDoc, optionalScorers, filterScorer, this.leafReaderContext, this.clusterIds, this.clusterBoundPrecomputed);
   }
 
   // Return a BulkScorer for the required clauses only

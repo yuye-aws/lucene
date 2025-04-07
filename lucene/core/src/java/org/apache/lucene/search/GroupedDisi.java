@@ -22,6 +22,7 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     private DocBound current;
     private final static String SORTED_FIELD = "cluster_id";
     private Map<Long, DocBound> clusterBound = new TreeMap<>();
+    private final Map<Long, DocBound> clusterBoundPrecomputed;
     private Iterator<Map.Entry<Long, DocBound>> clusterBoundIter;
 
     public DocBound getCurrent() {
@@ -29,7 +30,6 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     }
 
     private void initialize(Collection<Integer> groupValues) throws IOException {
-
         for (Integer groupValue : groupValues) {
             clusterBound.put(Long.valueOf(groupValue), new DocBound(-1, -1));
         }
@@ -54,6 +54,12 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
         initialize(groupValues);
     }
 
+    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues, Map<Long, DocBound> clusterBoundPrecomputed) throws IOException {
+        this.context = context;
+        this.clusterBoundPrecomputed = clusterBoundPrecomputed;
+        initialize(groupValues);
+    }
+
     @Override
     public boolean hasNext() {
         return clusterBoundIter.hasNext();
@@ -75,8 +81,8 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
      * This class represents a document bound, which is a range of document IDs that belong to the
      * same group.
      */
-    public class DocBound {
-        DocBound(int lower, int upper) {
+    public static class DocBound {
+        public DocBound(int lower, int upper) {
             this.lower = lower;
             this.upper = upper;
         }

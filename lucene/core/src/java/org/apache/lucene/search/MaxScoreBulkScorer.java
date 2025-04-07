@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.index.DocValues;
@@ -59,11 +60,12 @@ final class MaxScoreBulkScorer extends BulkScorer {
   private DocValuesSkipper skipper;
   private LeafReaderContext leafReaderContext;
   private Collection<Integer> clusterIds;
+  private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
 
   private final long[] windowMatches = new long[FixedBitSet.bits2words(INNER_WINDOW_SIZE)];
   private final double[] windowScores = new double[INNER_WINDOW_SIZE];
 
-  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter, LeafReaderContext leafReaderContext, Collection<Integer> clusterIds) throws IOException {
+  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter, LeafReaderContext leafReaderContext, Collection<Integer> clusterIds, Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed) throws IOException {
     this.maxDoc = maxDoc;
     this.filter = filter == null ? null : new DisiWrapper(filter, false);
     allScorers = new DisiWrapper[scorers.size()];
@@ -80,6 +82,7 @@ final class MaxScoreBulkScorer extends BulkScorer {
     maxScoreSums = new double[allScorers.length];
     this.leafReaderContext = leafReaderContext;
     this.clusterIds = clusterIds;
+    this.clusterBoundPrecomputed = clusterBoundPrecomputed;
   }
 
   // Number of outer windows that have been evaluated
@@ -96,7 +99,7 @@ final class MaxScoreBulkScorer extends BulkScorer {
     collector.setScorer(scorable);
     GroupedDisi groupedDisi = null;
     if (this.clusterIds != null) {
-      groupedDisi = new GroupedDisi(this.leafReaderContext, this.clusterIds);
+      groupedDisi = new GroupedDisi(this.leafReaderContext, this.clusterIds, this.clusterBoundPrecomputed);
       groupedDisi.next();
     }
 

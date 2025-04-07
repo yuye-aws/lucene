@@ -45,6 +45,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     private int minimumNumberShouldMatch;
     private final List<BooleanClause> clauses = new ArrayList<>();
     private List<Integer> clusterIds;
+    private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
     /** Sole constructor. */
     public Builder() {}
 
@@ -67,6 +68,11 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
 
     public Builder setClusterIds(List<Integer> clusterIds) {
       this.clusterIds = clusterIds;
+      return this;
+    }
+
+    public Builder setClusterBoundPrecomputed(Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed) {
+      this.clusterBoundPrecomputed = clusterBoundPrecomputed;
       return this;
     }
 
@@ -123,7 +129,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
      * Create a new {@link BooleanQuery} based on the parameters that have been set on this builder.
      */
     public BooleanQuery build() {
-      return new BooleanQuery(minimumNumberShouldMatch, clauses.toArray(new BooleanClause[0]), clusterIds);
+      return new BooleanQuery(minimumNumberShouldMatch, clauses.toArray(new BooleanClause[0]), clusterIds, clusterBoundPrecomputed);
     }
   }
 
@@ -132,6 +138,7 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
   // WARNING: Do not let clauseSets escape from this class as it breaks immutability:
   private final Map<Occur, Collection<Query>> clauseSets; // used for equals/hashCode
   private List<Integer> clusterIds;
+  private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
   private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses) {
     this.minimumNumberShouldMatch = minimumNumberShouldMatch;
     this.clauses = Collections.unmodifiableList(Arrays.asList(clauses));
@@ -147,9 +154,10 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
     }
   }
 
-  private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses, List<Integer> clusterIds) {
+  private BooleanQuery(int minimumNumberShouldMatch, BooleanClause[] clauses, List<Integer> clusterIds, Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed) {
     this(minimumNumberShouldMatch, clauses);
     this.clusterIds = clusterIds;
+    this.clusterBoundPrecomputed = getClusterBoundPrecomputed();
   }
 
   /** Gets the minimum number of the optional BooleanClauses which must be satisfied. */
@@ -171,6 +179,10 @@ public class BooleanQuery extends Query implements Iterable<BooleanClause> {
 
   public Collection<Integer> getClusterIds() {
     return this.clusterIds;
+  }
+
+  public Map<Long, GroupedDisi.DocBound> getClusterBoundPrecomputed() {
+    return this.clusterBoundPrecomputed;
   }
 
   /**
