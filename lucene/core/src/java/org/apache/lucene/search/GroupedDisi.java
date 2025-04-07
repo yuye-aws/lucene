@@ -22,7 +22,7 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     private DocBound current;
     private final static String SORTED_FIELD = "cluster_id";
     private Map<Long, DocBound> clusterBound = new TreeMap<>();
-    private final Map<Long, DocBound> clusterBoundPrecomputed;
+    private Map<Long, DocBound> clusterBoundPrecomputed = new TreeMap<>();;
     private Iterator<Map.Entry<Long, DocBound>> clusterBoundIter;
 
     public DocBound getCurrent() {
