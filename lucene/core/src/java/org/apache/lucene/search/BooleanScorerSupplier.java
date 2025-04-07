@@ -32,8 +32,6 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Weight.DefaultBulkScorer;
 import org.apache.lucene.util.Bits;
 
-import javax.swing.*;
-
 final class BooleanScorerSupplier extends ScorerSupplier {
   private final Map<BooleanClause.Occur, Collection<ScorerSupplier>> subs;
   private final ScoreMode scoreMode;
