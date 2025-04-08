@@ -60,12 +60,12 @@ final class MaxScoreBulkScorer extends BulkScorer {
   private DocValuesSkipper skipper;
   private LeafReaderContext leafReaderContext;
   private Collection<Integer> clusterIds;
-  private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
+  private Map<String, Map<Long, GroupedDisi.DocBound>> clusterBoundPrecomputed;
 
   private final long[] windowMatches = new long[FixedBitSet.bits2words(INNER_WINDOW_SIZE)];
   private final double[] windowScores = new double[INNER_WINDOW_SIZE];
 
-  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter, LeafReaderContext leafReaderContext, Collection<Integer> clusterIds, Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed) throws IOException {
+  MaxScoreBulkScorer(int maxDoc, List<Scorer> scorers, Scorer filter, LeafReaderContext leafReaderContext, Collection<Integer> clusterIds, Map<String, Map<Long, GroupedDisi.DocBound>> clusterBoundPrecomputed) throws IOException {
     this.maxDoc = maxDoc;
     this.filter = filter == null ? null : new DisiWrapper(filter, false);
     allScorers = new DisiWrapper[scorers.size()];

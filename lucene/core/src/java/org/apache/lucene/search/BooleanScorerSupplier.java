@@ -41,7 +41,7 @@ final class BooleanScorerSupplier extends ScorerSupplier {
   private boolean topLevelScoringClause;
   private LeafReaderContext leafReaderContext;
   private Collection<Integer> clusterIds;
-  private Map<Long, GroupedDisi.DocBound> clusterBoundPrecomputed;
+  private Map<String, Map<Long, GroupedDisi.DocBound>> clusterBoundPrecomputed;
 
   BooleanScorerSupplier(
       Weight weight,

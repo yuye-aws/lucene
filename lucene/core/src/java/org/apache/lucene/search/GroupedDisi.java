@@ -24,7 +24,6 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     String segmentName;
     private final static String SORTED_FIELD = "cluster_id";
     private Map<Long, DocBound> clusterBound = new TreeMap<>();
-    private Map<Long, DocBound> clusterBoundPrecomputed = new TreeMap<>();;
     private Iterator<Map.Entry<Long, DocBound>> clusterBoundIter;
 
     public DocBound getCurrent() {
@@ -54,8 +53,7 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
     public static SegmentReader segmentReader(LeafReader reader) {
         if (reader instanceof SegmentReader) {
             return (SegmentReader) reader;
-        } else if (reader instanceof FilterLeafReader) {
-            final FilterLeafReader fReader = (FilterLeafReader) reader;
+        } else if (reader instanceof FilterLeafReader fReader) {
             return segmentReader(FilterLeafReader.unwrap(fReader));
         } else if (reader instanceof FilterCodecReader) {
             final FilterCodecReader fReader = (FilterCodecReader) reader;
@@ -65,16 +63,14 @@ public class GroupedDisi implements Iterator<GroupedDisi.DocBound> {
         throw new IllegalStateException("Can not extract segment reader from given index reader [" + reader + "]");
     }
 
-    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues) throws IOException {
+    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues, Map<String, Map<Long, GroupedDisi.DocBound>> clusterBoundPrecomputed) throws IOException {
         this.context = context;
-        initialize(groupValues);
         this.segmentName = segmentReader(context.reader()).getSegmentName();
-    }
-
-    GroupedDisi(LeafReaderContext context, Collection<Integer> groupValues, Map<Long, DocBound> clusterBoundPrecomputed) throws IOException {
-        this.context = context;
-        this.clusterBoundPrecomputed = clusterBoundPrecomputed;
-        initialize(groupValues);
+        if (clusterBoundPrecomputed.containsKey(segmentName)) {
+            this.clusterBound = clusterBoundPrecomputed.get(segmentName);
+        } else {
+            initialize(groupValues);
+        }
     }
 
     @Override
